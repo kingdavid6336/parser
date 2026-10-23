@@ -1,6 +1,377 @@
 Changelog
 =========
 
+v3.3.13.0 (2026-10-23)
+----------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.13 (#1096) (Koichi ITO)
+
+v3.3.12.0 (2026-07-16)
+----------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.12 (#1091) (Koichi ITO)
+
+v3.3.11.1 (2026-03-27)
+----------------------
+
+API modifications:
+ * Bump maintenance branches to 3.2.11 (#1089) (Koichi ITO)
+
+v3.3.11.0 (2026-03-26)
+----------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.11 (#1088) (Koichi ITO)
+
+v3.3.10.2 (2026-02-17)
+----------------------
+
+Features implemented:
+ * add `blocknilarg` for prism (#1087) (Earlopain)
+
+v3.3.10.1 (2026-01-15)
+----------------------
+
+API modifications:
+ * Bump maintenance branches to 3.2.10 (#1085) (Koichi ITO)
+
+v3.3.10.0 (2025-10-27)
+----------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.10 (#1083) (Koichi ITO)
+
+v3.3.9.0 (2025-07-25)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.9 (#1080) (Koichi ITO)
+ * Bump maintenance branches to 3.2.9 (#1079) (Koichi ITO)
+
+v3.3.7.5 (2025-04-14)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.8 (#1077) (Koichi ITO)
+ * YARD docs for Parser::CurrentRuby and Parser::Base#version (#1076) (Vince Broz)
+
+v3.3.7.4 (2025-03-31)
+---------------------
+
+Bugs fixed:
+ * lexer-strings.rb: Avoid an exception on utf8 surrogate pair codepoints (#1051) (Earlopain)
+ * builder.rb: emit `kwargs` node for `indexasgn` when opted in (#1053) (Earlopain)
+ * builder.rb: correctly handle `...` forwarding to super with explicit block (#1049) (Earlopain)
+ * numbered parameters are valid for pattern matching pinning (#1060) (Earlopain)
+
+v3.3.7.3 (2025-03-26)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.2.8 and 3.1.7 (#1074) (Koichi ITO)
+
+v3.3.7.2 (2025-03-20)
+---------------------
+
+Features implemented:
+ * add prism-specific node types (#1071) (Earlopain)
+
+Bugs fixed:
+ * builder.rb: fix hash value omission considering some local vars as constants (#1064) (Earlopain)
+
+v3.3.7.1 (2025-02-05)
+---------------------
+
+API modifications:
+ * parser/current: add -dev prefix to 3.4 branch (#1067) (Ilya Bylich)
+ * parser/current: bump 3.2 branch to 3.2.7 (#1066) (Ilya Bylich)
+
+v3.3.7.0 (2025-01-16)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.7 (#1061) (Koichi ITO)
+ * bump 3.4 branch, remove 3.0 from CI (EOL) (#1057) (Ilya Bylich)
+ * assert that version-specific checks actually run against at least one version (#1050) (Earlopain)
+
+Features implemented:
+ * ruby34.y: reject `return` in singleton class (#1048) (Earlopain)
+
+Bugs fixed:
+ * Fix `ruby-parse` with a folder ending in `.rb` (#1047) (Earlopain)
+
+v3.3.6.0 (2024-11-05)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.6 (#1045) (Koichi ITO)
+
+v3.3.5.1 (2024-10-31)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.2.6 (#1044) (Koichi ITO)
+
+v3.3.5.0 (2024-09-04)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.5 (#1039) (Koichi ITO)
+
+v3.3.4.2 (2024-08-08)
+---------------------
+
+Bugs fixed:
+ * Fix errros in the ascii specs of RuboCop (#1037) (Koichi ITO)
+
+v3.3.4.1 (2024-08-07)
+---------------------
+
+API modifications:
+ * Bump 3.2 branch to 3.2.5. (#1036) (Ilya Bylich)
+ * Bump Racc to 1.8.1 (#1031) (Koichi ITO)
+
+Bugs fixed:
+ * builder.rb: catch encoding errors when parsing invalid encoding regexp (#1033) (Earlopain)
+
+v3.3.4.0 (2024-07-10)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.4 (#1027) (Koichi ITO)
+
+v3.3.3.0 (2024-06-12)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.3.3 (#1023) (Koichi ITO)
+ * Bump Racc to 1.8.0 (#1018) (Koichi ITO)
+
+v3.3.2.0 (2024-05-30)
+---------------------
+
+API modifications:
+ * Bump 3.3 branch to 3.3.2 (Ilya Bylich)
+ * Bump 3.1 branch to 3.1.6 (#1014) (Koichi ITO)
+
+v3.3.1.0 (2024-04-26)
+---------------------
+
+API modifications:
+ * Bump parser branches to 3.0.7, 3.1.5, 3.2.4, 3.3.1 (#1011) (Ilya Bylich)
+
+Features implemented:
+ * ruby{33,34}.y: allow blocks inherit anonymous args. (#1010) (Ilya Bylich)
+
+ve (2024-03-18)
+---------------
+
+API modifications:
+ * Use `require_relative` in the Parser codebase (#1003) (Koichi ITO)
+
+Features implemented:
+ * Raise a more specific error when encountering an unknown magic comment encoding (#999) (Earlopain)
+
+v3.3.0.5 (2024-01-21)
+---------------------
+
+API modifications:
+ * Bump 3.2 branch to 3.2.3 (#993) (Koichi ITO)
+
+v3.3.0.4 (2024-01-15)
+---------------------
+
+Features implemented:
+ * Register a Ruby 3.4 parser (#991) (Jean byroot Boussier)
+
+v3.3.0.3 (2024-01-12)
+---------------------
+
+Bugs fixed:
+ * lexer.rl: accept tabs before closing heredoc delimiter (#990) (Ilya Bylich)
+
+v3.3.0.2 (2024-01-07)
+---------------------
+
+Bugs fixed:
+ * Fix an error when using heredoc with non-word delimiters (#987) (Koichi ITO)
+
+v3.3.0.1 (2024-01-06)
+---------------------
+
+Bugs fixed:
+ * Supports Ruby 2.0+ runtime (#986) (Koichi ITO)
+
+v3.3.0.0 (2024-01-05)
+---------------------
+
+API modifications:
+ * current.rb: mark 3.3 branch as stable (#984) (Ilya Bylich)
+ * ruby33.y: extract string_dend (#969) (Ilya Bylich)
+ * lexer.rl: treat numparams as locals (#968) (Ilya Bylich)
+ * ruby33.y: extract words_sep (#967) (Ilya Bylich)
+ * literal.rb: match heredoc identifier from end of line (#965) (Ilya Bylich)
+ * ruby33.y: extract {endless_command,endless_arg} rules (#964) (Ilya Bylich)
+ * Bump Racc to 1.7.3 (#954) (Koichi ITO)
+
+Features implemented:
+ * ruby33.y: reject ambiguous anonymous arguments (#983) (Ilya Bylich)
+ * ruby33.y: extract arg_splat rule. (#981) (Ilya Bylich)
+ * builder.rb: warn `it` in a block with no ordinary params. (#980) (Ilya Bylich)
+ * builder.rb: extract named captures only from static regexes. (#979) (Ilya Bylich)
+ * ruby33.y: accept expr_value in sclass definition. (#978) (Ilya Bylich)
+ * ruby33.y: extract p_in_kwarg (#977) (Ilya Bylich)
+ * ruby33.y: extract p_assoc and p_in rules (#976) (Ilya Bylich)
+ * ruby33.y: reject invalid gvar as symbol (#974) (Ilya Bylich)
+ * ruby33.y: properly restore in_defined flag, extract begin_defined rule (#973) (Ilya Bylich)
+ * builder.rb: reject multi-char gvar names starting with 0 (#972) (Ilya Bylich)
+ * ruby33.y: allow semicolon in parenthesis at the first argument of command call (#971) (Ilya Bylich)
+ * ruby33.y: parse qualified const with brace block as a method call (#970) (Ilya Bylich)
+
+v3.2.2.4 (2023-10-04)
+---------------------
+
+API modifications:
+ * bump Racc to 1.7.1 (#930) (Koichi ITO)
+
+Bugs fixed:
+ * Fix an error for flip-flop with beginless or endless ranges (#946) (Koichi ITO)
+
+v3.2.2.3 (2023-06-08)
+---------------------
+
+API modifications:
+ * Add Racc to runtime dependencies (#929) (Koichi ITO)
+
+v3.2.2.2 (2023-06-08)
+---------------------
+
+API modifications:
+ * bump racc to 1.7.0 (#928) (Ilya Bylich)
+
+v3.2.2.0 (2023-04-01)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.2.2, 3.1.4, 3.0.6, and 2.7.8 (#920) (Koichi ITO)
+
+v3.2.1.1 (2023-03-08)
+---------------------
+
+API modifications:
+ * bump racc to 1.6.2 (#916) (Ilya Bylich)
+ * backport tests for mixed usage of anonymous kwarg/kwrestarg and forwarded-arguments (#915) (Ilya Bylich)
+ * add tests for kwopt+kwrest arguments and forwarded_kwrestarg. (#913) (Ilya Bylich)
+
+Bugs fixed:
+ * builders/default: allow forwarded_kwrestarg with additional kwargs (#912) (Owen Stephens)
+
+v3.2.1.0 (2023-02-09)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.2.1 (#908) (Koichi ITO)
+ * lexer.rl: extract strings lexing to lexer-strings.rl (#905) (Ilya Bylich)
+
+Features implemented:
+ * Ruby 3.3 support (#904) (Ole Friis Østergaard)
+
+v3.2.0.0 (2023-01-03)
+---------------------
+
+API modifications:
+ * lexer.rl: extract `extend_string_escaped` to a separate method (#893) (Ilya Bylich)
+ * bump Racc to 1.6.1 (#890) (Koichi ITO)
+
+Features implemented:
+ * lexer.rl: use Ragel -F0 on non-CRuby (#894) (Benoit Daloze)
+ * ruby32.y: Allow optional newlines before closing parenthesis (#892) (Koichi ITO)
+
+Bugs fixed:
+ * ruby32.y: fix a parse error when using forwarded argument with restarg (#889) (Koichi ITO)
+
+v3.1.3.0 (2022-11-25)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.1.3, 3.0.5, 2.7.7 (#886) (Koichi ITO)
+ * ruby32.y: reuse nonlocal_var rule. (#879) (Ilya Bylich)
+ * ruby32.y: reuse opt_nl rule. (#878) (Ilya Bylich)
+
+Features implemented:
+ * ruby32.y: implement forwarded restarg and kwrestarg. (#874) (Ilya Bylich)
+
+v3.1.2.1 (2022-08-08)
+---------------------
+
+Bugs fixed:
+ * ruby31.y: fix preparing the state for one-line patterns without braces (#864) (Vladimir Dementyev)
+
+v3.1.2.0 (2022-04-12)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.1.2, 3.0.4, 2.7.6, and 2.6.10 (#850) (Koichi ITO)
+
+Bugs fixed:
+ * ruby32.y: fix using p_kwnorest in f_no_kwarg (#848) (Vladimir Dementyev)
+
+v3.1.1.0 (2022-02-21)
+---------------------
+
+API modifications:
+ * Bump 3.1 branch to 3.1.1 (Koichi ITO)
+
+Features implemented:
+ * ruby32.y: Reuse operation rule for operation2 (Koichi ITO)
+ * ruby32.y: Reuse p_kwnorest rule for f_no_kwarg (Koichi ITO)
+ * ruby-parse: add ability to read fragment from stdin (#844) (Jeremy Stanley)
+ * ruby32.y: reduce p_args with p_rest (#843) (Vladimir Dementyev)
+ * ruby32.y: branch parser (#841) (Ilya Bylich)
+
+v3.1.0.0 (2022-01-03)
+---------------------
+
+API modifications:
+ * parser/current: update for 3.1.0 release. (#840) (Ilya Bylich)
+
+Features implemented:
+ * ruby31.y: accept forward arg without parentheses. (#839) (Ilya Bylich)
+
+v3.0.3.2 (2021-12-08)
+---------------------
+
+Bugs fixed:
+ * dedenter.rb: fix an encoding/squiggly heredoc regression (#836) (hmdne)
+
+v3.0.3.1 (2021-11-29)
+---------------------
+
+Features implemented:
+ * ruby31.y: parse anonymous block argument. (#833) (Ilya Bylich)
+ * ruby31.y: parse forward argument without parentheses (#832) (Ilya Bylich)
+
+v3.0.3.0 (2021-11-25)
+---------------------
+
+API modifications:
+ * Bump maintenance branches to 3.0.3, 2.7.5, and 2.6.9 (#829) (Koichi ITO)
+
+Features implemented:
+ * lexer.rl: parse meta-control-hex chars in regexes starting from 3.1 (#828) (Ilya Bylich)
+ * builder.rb: warn on duplicate hash key literals. (#827) (Ilya Bylich)
+ * ruby31.y: Allow value omission in Hash literals (#818) (Svyatoslav Kryukov)
+ * ruby31.y: Allow omission of parentheses in one line pattern matching (#816) (Koichi ITO)
+ * ruby31.y: Add pattern matching pin support for instance/class/global variables (#813) (Koichi ITO)
+
+Bugs fixed:
+ * ruby31.y: handle local variables as hash labels with omitted values (#820) (Ilya Bylich)
+ * lexer.rl: Fix handling of beginless ranges at start of line (#822) (Matijs van Zuijlen)
+ * dedenter.rb: Fix squiggly heredoc line continuation handling (#819) (Matijs van Zuijlen)
+ * lexer.rl: fix incompatible delimiters on percent literal (#808) (Masataka Pocke Kuwabara)
+
 v3.0.2.0 (2021-07-08)
 ---------------------
 

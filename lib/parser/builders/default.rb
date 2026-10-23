@@ -426,7 +426,7 @@ module Parser
     def regexp_compose(begin_t, parts, end_t, options)
       begin
         static_regexp(parts, options)
-      rescue RegexpError => e
+      rescue RegexpError, Encoding::UndefinedConversionError => e
         diagnostic :error, :invalid_regexp, { :message => e.message },
                    loc(begin_t).join(loc(end_t))
       end
@@ -524,10 +524,10 @@ module Parser
 
       label = value(key_t)
       value =
-        if label =~ /\A[[:lower:]]/
-          n(:ident, [ label.to_sym ], Source::Map::Variable.new(value_l))
-        else
+        if label =~ /\A[[:upper:]]/
           n(:const, [ nil, label.to_sym ], Source::Map::Constant.new(nil, value_l, value_l))
+        else
+          n(:ident, [ label.to_sym ], Source::Map::Variable.new(value_l))
         end
       pair_keyword(key_t, accessible(value))
     end
@@ -538,29 +538,23 @@ module Parser
     end
 
     def associate(begin_t, pairs, end_t)
-      0.upto(pairs.length - 1) do |i|
-        (i + 1).upto(pairs.length - 1) do |j|
-          key1, = *pairs[i]
-          key2, = *pairs[j]
+      key_set = Set.new
 
-          do_warn = false
+      pairs.each do |pair|
+        next unless pair.type.eql?(:pair)
 
-          # keys have to be simple nodes, MRI ignores equal composite keys like
-          # `{ a(1) => 1, a(1) => 1 }`
-          case key1.type
-          when :sym, :str, :int, :float
-            if key1 == key2
-              do_warn = true
-            end
-          when :rational, :complex, :regexp
-            if @parser.version >= 31 && key1 == key2
-              do_warn = true
-            end
-          end
+        key, = *pair
 
-          if do_warn
-            diagnostic :warning, :duplicate_hash_key, nil, key2.loc.expression
-          end
+        case key.type
+        when :sym, :str, :int, :float
+        when :rational, :complex, :regexp
+          next unless @parser.version >= 31
+        else
+          next
+        end
+
+        unless key_set.add?(key)
+          diagnostic :warning, :duplicate_hash_key, nil, key.loc.expression
         end
       end
 
@@ -600,7 +594,13 @@ module Parser
     end
 
     def gvar(token)
-      n(:gvar, [ value(token).to_sym ],
+      gvar_name = value(token)
+
+      if gvar_name.start_with?('$0') && gvar_name.length > 2
+        diagnostic :error, :gvar_name, { :name => gvar_name }, loc(token)
+      end
+
+      n(:gvar, [ gvar_name.to_sym ],
         variable_map(token))
     end
 
@@ -660,6 +660,13 @@ module Parser
         end
 
         unless @parser.static_env.declared?(name)
+          if @parser.version == 33 &&
+              name == :it &&
+              @parser.context.in_block &&
+              !@parser.max_numparam_stack.has_ordinary_params?
+            diagnostic :warning, :ambiguous_it_call, nil, node.loc.expression
+          end
+
           return n(:send, [ nil, name ],
             var_send_map(node))
         end
@@ -714,7 +721,7 @@ module Parser
         node.updated(:gvasgn)
 
       when :const
-        unless @parser.context.dynamic_const_definition_allowed?
+        if @parser.context.in_def
           diagnostic :error, :dynamic_const, nil, node.loc.expression
         end
 
@@ -879,8 +886,14 @@ module Parser
 
     def args(begin_t, args, end_t, check_args=true)
       args = check_duplicate_args(args) if check_args
-      n(:args, args,
-        collection_map(begin_t, args, end_t))
+      validate_no_forward_arg_after_restarg(args)
+
+      map = collection_map(begin_t, args, end_t)
+      if !self.class.emit_forward_arg && args.length == 1 && args[0].type == :forward_arg
+        n(:forward_args, [], map)
+      else
+        n(:args, args, map)
+      end
     end
 
     def numargs(max_numparam)
@@ -967,9 +980,12 @@ module Parser
     end
 
     def blockarg(amper_t, name_t)
-      check_reserved_for_numparam(value(name_t), loc(name_t))
+      if !name_t.nil?
+        check_reserved_for_numparam(value(name_t), loc(name_t))
+      end
 
-      n(:blockarg, [ value(name_t).to_sym ],
+      arg_name = name_t ? value(name_t).to_sym : nil
+      n(:blockarg, [ arg_name ],
         arg_prefix_map(amper_t, name_t))
     end
 
@@ -1069,6 +1085,14 @@ module Parser
       n(:forwarded_args, [], token_map(dots_t))
     end
 
+    def forwarded_restarg(star_t)
+      n(:forwarded_restarg, [], token_map(star_t))
+    end
+
+    def forwarded_kwrestarg(dstar_t)
+      n(:forwarded_kwrestarg, [], token_map(dstar_t))
+    end
+
     def call_method(receiver, dot_t, selector_t,
                     lparen_t=nil, args=[], rparen_t=nil)
       type = call_type_for_dot(dot_t)
@@ -1096,15 +1120,19 @@ module Parser
     end
 
     def block(method_call, begin_t, args, body, end_t)
-      _receiver, _selector, *call_args = *method_call
-
       if method_call.type == :yield
         diagnostic :error, :block_given_to_yield, nil, method_call.loc.keyword, [loc(begin_t)]
       end
 
-      last_arg = call_args.last
+      if method_call.type == :super
+        *_args, last_arg = *method_call
+      else
+        _receiver, _selector, *_args, last_arg = *method_call
+      end
       if last_arg && (last_arg.type == :block_pass || last_arg.type == :forwarded_args)
-        diagnostic :error, :block_and_blockarg, nil, last_arg.loc.expression, [loc(begin_t)]
+        if (@parser.version == 33 && method_call.type != :super) || @parser.version != 33
+          diagnostic :error, :block_and_blockarg, nil, last_arg.loc.expression, [loc(begin_t)]
+        end
       end
 
       if args.type == :numargs
@@ -1168,6 +1196,10 @@ module Parser
     end
 
     def index_asgn(receiver, lbrack_t, indexes, rbrack_t)
+      if self.class.emit_kwargs
+        rewrite_hash_args_to_kwargs(indexes)
+      end
+
       if self.class.emit_index
         n(:indexasgn, [ receiver, *indexes ],
           index_map(receiver, lbrack_t, rbrack_t))
@@ -1679,7 +1711,19 @@ module Parser
           cond
         end
 
-      when :and, :or, :irange, :erange
+      when :and, :or
+        lhs, rhs = *cond
+
+        if @parser.version == 18
+          cond
+        else
+          cond.updated(cond.type, [
+            check_condition(lhs),
+            check_condition(rhs)
+          ])
+        end
+
+      when :irange, :erange
         lhs, rhs = *cond
 
         type = case cond.type
@@ -1687,15 +1731,13 @@ module Parser
         when :erange then :eflipflop
         end
 
-        if [:and, :or].include?(cond.type) &&
-               @parser.version == 18
-          cond
-        else
-          cond.updated(type, [
-            check_condition(lhs),
-            check_condition(rhs)
-          ])
-        end
+        lhs_condition = check_condition(lhs) unless lhs.nil?
+        rhs_condition = check_condition(rhs) unless rhs.nil?
+
+        return cond.updated(type, [
+          lhs_condition,
+          rhs_condition
+        ])
 
       when :regexp
         n(:match_current_line, [ cond ], expr_map(cond.loc.expression))
@@ -1741,6 +1783,21 @@ module Parser
       elsif arg_name_collides?(this_name, that_name)
         diagnostic :error, :duplicate_argument, nil,
                    this_arg.loc.name, [ that_arg.loc.name ]
+      end
+    end
+
+    def validate_no_forward_arg_after_restarg(args)
+      restarg = nil
+      forward_arg = nil
+      args.each do |arg|
+        case arg.type
+        when :restarg then restarg = arg
+        when :forward_arg then forward_arg = arg
+        end
+      end
+
+      if !forward_arg.nil? && !restarg.nil?
+        diagnostic :error, :forward_arg_after_restarg, nil, forward_arg.loc.expression, [restarg.loc.expression]
       end
     end
 
@@ -2214,11 +2271,20 @@ module Parser
         source
       end
 
-      Regexp.new(source, (Regexp::EXTENDED if options.children.include?(:x)))
+      begin
+        old_verbose, $VERBOSE = $VERBOSE, nil
+        Regexp.new(source, (Regexp::EXTENDED if options.children.include?(:x)))
+      ensure
+        $VERBOSE = old_verbose
+      end
     end
 
     def static_regexp_node(node)
       if node.type == :regexp
+        if @parser.version >= 33 && node.children[0..-2].any? { |child| child.type != :str }
+          return nil
+        end
+
         parts, options = node.children[0..-2], node.children[-1]
         static_regexp(parts, options)
       end

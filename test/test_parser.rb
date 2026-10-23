@@ -31,6 +31,9 @@ class TestParser < Minitest::Test
   SINCE_2_7 = SINCE_2_6 - %w(2.6)
   SINCE_3_0 = SINCE_2_7 - %w(2.7)
   SINCE_3_1 = SINCE_3_0 - %w(3.0)
+  SINCE_3_2 = SINCE_3_1 - %w(3.1)
+  SINCE_3_3 = SINCE_3_2 - %w(3.2)
+  SINCE_3_4 = SINCE_3_3 - %w(3.3)
 
   # Guidelines for test naming:
   #  * Test structure follows structure of AST_FORMAT.md.
@@ -316,6 +319,13 @@ class TestParser < Minitest::Test
 
     assert_parses(
       s(:send, nil, :p,
+        s(:str, "ð\n")),
+      %Q{p <<~E\n  ð\nE},
+      %q{},
+      SINCE_2_3)
+
+    assert_parses(
+      s(:send, nil, :p,
         s(:dstr,
           s(:str, "x\n"),
           s(:str, "  y\n"))),
@@ -573,6 +583,18 @@ class TestParser < Minitest::Test
       %q[/#{""}?/],
       %q(~~~~~~~~ location),
       SINCE_1_9)
+  end
+
+  def test_regexp_error_invalid_encoding_conversion
+    message = if defined?(JRUBY_VERSION)
+      '"\\xE3\\x81\\x82" from UTF-8 to ASCII-8BIT'
+    else
+      'U+3042 from UTF-8 to ASCII-8BIT'
+    end
+    assert_diagnoses(
+      [:error, :invalid_regexp, { message: message }],
+      %q[/あ/n],
+      %q(~~~ location))
   end
 
   # Arrays
@@ -2217,7 +2239,7 @@ class TestParser < Minitest::Test
         s(:lvar, :var)),
       %q{def f(var = defined?(var)) var end},
       %q{},
-      SINCE_2_7 - SINCE_2_1)
+      SINCE_2_1 - SINCE_2_7)
 
     assert_parses(
       s(:def, :f,
@@ -2225,7 +2247,7 @@ class TestParser < Minitest::Test
         s(:lvar, :var)),
       %q{def f(var: defined?(var)) var end},
       %q{},
-      SINCE_2_7 - SINCE_2_1)
+      SINCE_2_1 - SINCE_2_7)
 
     assert_parses(
       s(:block,
@@ -3603,6 +3625,33 @@ class TestParser < Minitest::Test
     Parser::Builders::Default.emit_index = true
   end
 
+  def test_send_index_asgn_kwarg
+    assert_parses(
+      s(:indexasgn,
+        s(:lvar, :foo),
+        s(:kwargs,
+          s(:pair,
+            s(:sym, :kw),
+            s(:send, nil, :arg))),
+        s(:int, 3)),
+      %q{foo[:kw => arg] = 3})
+  end
+
+  def test_send_index_asgn_kwarg_legacy
+    Parser::Builders::Default.emit_kwargs = false
+    assert_parses(
+      s(:indexasgn,
+        s(:lvar, :foo),
+        s(:hash,
+          s(:pair,
+            s(:sym, :kw),
+            s(:send, nil, :arg))),
+        s(:int, 3)),
+      %q{foo[:kw => arg] = 3})
+  ensure
+    Parser::Builders::Default.emit_kwargs = true
+  end
+
   def test_send_lambda
     assert_parses(
       s(:block, s(:lambda),
@@ -3779,6 +3828,25 @@ class TestParser < Minitest::Test
       %q{                ~~ selector (match_with_lvasgn)
         |~~~~~~~~~~~~~~~~~~~~~~~~ expression (match_with_lvasgn)},
       SINCE_1_9)
+
+    assert_parses(
+      s(:begin,
+        s(:match_with_lvasgn,
+          s(:regexp,
+            s(:str, "(?<a>a)"),
+            s(:regopt)),
+          s(:str, "a")),
+        s(:send,
+          s(:regexp,
+            s(:begin),
+            s(:str, "(?<b>b)"),
+            s(:regopt)), :=~,
+          s(:str, "b")),
+        s(:lvar, :a),
+        s(:send, nil, :b)),
+      %q{/(?<a>a)/ =~ 'a'; /#{}(?<b>b)/ =~ 'b'; a; b},
+      %q{},
+      SINCE_3_3)
   end
 
   def test_non_lvar_injecting_match
@@ -4732,6 +4800,22 @@ class TestParser < Minitest::Test
         |      ~~ operator (iflipflop)})
 
     assert_parses(
+      s(:if, s(:iflipflop, s(:lvar, :foo), s(:nil)),
+        nil, nil),
+      %q{if foo..nil; end},
+      %q{   ~~~~~~~~ expression (iflipflop)
+        |      ~~ operator (iflipflop)},
+      %w(1.8))
+
+    assert_parses(
+      s(:if, s(:iflipflop, s(:nil), s(:lvar, :bar)),
+        nil, nil),
+      %q{if nil..bar; end},
+      %q{   ~~~~~~~~ expression (iflipflop)
+        |      ~~ operator (iflipflop)},
+      %w(1.8))
+
+    assert_parses(
       s(:not, s(:begin, s(:iflipflop, s(:lvar, :foo), s(:lvar, :bar)))),
       %q{!(foo..bar)},
       %q{  ~~~~~~~~ expression (begin.iflipflop)
@@ -4746,6 +4830,26 @@ class TestParser < Minitest::Test
       SINCE_1_9)
   end
 
+  def test_cond_iflipflop_with_endless_range
+    assert_parses(
+      s(:if, s(:iflipflop, s(:lvar, :foo), nil),
+        nil, nil),
+      %q{if foo..; end},
+      %q{   ~~~~~ expression (iflipflop)
+        |      ~~ operator (iflipflop)},
+      SINCE_2_6)
+  end
+
+  def test_cond_iflipflop_with_beginless_range
+    assert_parses(
+      s(:if, s(:iflipflop, nil, s(:lvar, :bar)),
+        nil, nil),
+      %q{if ..bar; end},
+      %q{   ~~~~~ expression (iflipflop)
+        |   ~~ operator (iflipflop)},
+      SINCE_2_7)
+  end
+
   def test_cond_eflipflop
     assert_parses(
       s(:if, s(:eflipflop, s(:lvar, :foo), s(:lvar, :bar)),
@@ -4753,6 +4857,22 @@ class TestParser < Minitest::Test
       %q{if foo...bar; end},
       %q{   ~~~~~~~~~ expression (eflipflop)
         |      ~~~ operator (eflipflop)})
+
+    assert_parses(
+      s(:if, s(:eflipflop, s(:lvar, :foo), s(:nil)),
+        nil, nil),
+      %q{if foo...nil; end},
+      %q{   ~~~~~~~~~ expression (eflipflop)
+        |      ~~~ operator (eflipflop)},
+      %w(1.8))
+
+    assert_parses(
+      s(:if, s(:eflipflop, s(:nil), s(:lvar, :bar)),
+        nil, nil),
+      %q{if nil...bar; end},
+      %q{   ~~~~~~~~~ expression (eflipflop)
+        |      ~~~ operator (eflipflop)},
+      %w(1.8))
 
     assert_parses(
       s(:not, s(:begin, s(:eflipflop, s(:lvar, :foo), s(:lvar, :bar)))),
@@ -4767,6 +4887,26 @@ class TestParser < Minitest::Test
       %q{  ~~~~~~~~~ expression (begin.eflipflop)
         |     ~~~ operator (begin.eflipflop)},
       SINCE_1_9)
+  end
+
+  def test_cond_eflipflop_with_endless_range
+    assert_parses(
+      s(:if, s(:eflipflop, s(:lvar, :foo), nil),
+        nil, nil),
+      %q{if foo...; end},
+      %q{   ~~~~~~ expression (eflipflop)
+        |      ~~~ operator (eflipflop)},
+      SINCE_2_6)
+  end
+
+  def test_cond_eflipflop_with_beginless_range
+    assert_parses(
+      s(:if, s(:eflipflop, nil, s(:lvar, :bar)),
+        nil, nil),
+      %q{if ...bar; end},
+      %q{   ~~~~~~ expression (eflipflop)
+        |   ~~~ operator (eflipflop)},
+      SINCE_2_7)
   end
 
   def test_cond_match_current_line
@@ -5608,7 +5748,7 @@ class TestParser < Minitest::Test
         s(:str, "")),
       %q{/\xa8/n =~ ""}.dup.force_encoding(Encoding::UTF_8),
       %{},
-      SINCE_3_1 - SINCE_1_9)
+      SINCE_1_9 - SINCE_3_1)
   end
 
   #
@@ -5640,6 +5780,25 @@ class TestParser < Minitest::Test
       %q{"\u{120 120000}"},
       %q{        ~~~~~~ location},
       SINCE_1_9)
+  end
+
+  def test_codepoint_surrogate
+    assert_diagnoses(
+      [:error, :invalid_unicode_escape],
+      %q{"\u{D800}"},
+      %q{    ~~~~ location})
+
+    assert_diagnoses(
+      [:error, :invalid_unicode_escape],
+      %q{"\u{DFFF}"},
+      %q{    ~~~~ location})
+
+    [
+      %q{"\u{D7FF}"},
+      %q{"\u{E000}"},
+    ].each do |code|
+      refute_diagnoses(code)
+    end
   end
 
   def test_on_error
@@ -6513,7 +6672,7 @@ class TestParser < Minitest::Test
         s(:str, "#")),
       %q{[/()\\1/, ?#]},
       %q{},
-      SINCE_3_1 - SINCE_1_9)
+      SINCE_1_9 - SINCE_3_1)
   end
 
   def test_parser_bug_272
@@ -6692,54 +6851,51 @@ class TestParser < Minitest::Test
       %q{class A; get_context; end},
       %q{class A < B; get_context; end}
     ].each do |code|
-      assert_context([:class], code, ALL_VERSIONS)
+      assert_context([:in_class], code, ALL_VERSIONS - SINCE_3_4)
+      assert_context([:in_class, :cant_return], code, SINCE_3_4)
     end
   end
 
   def test_context_module
     assert_context(
-      [:module],
+      [:in_class],
       %q{module M; get_context; end},
-      ALL_VERSIONS)
+      ALL_VERSIONS - SINCE_3_4)
+    assert_context(
+      [:in_class, :cant_return],
+      %q{module M; get_context; end},
+      SINCE_3_4)
   end
 
   def test_context_sclass
-    assert_context(
-      [:sclass],
+    [
       %q{class << foo; get_context; end},
-      ALL_VERSIONS)
+      %q{class A; class << self; get_context; end; end}
+    ].each do |code|
+      assert_context([:cant_return], code, SINCE_3_4)
+    end
   end
 
   def test_context_def
-    [
+    assert_context(
+      [:in_def],
       %q{def m; get_context; end},
-      %q{def m(a = get_context); end}
-    ].each do |code|
-      assert_context([:def], code, ALL_VERSIONS)
-    end
+      ALL_VERSIONS)
 
-    [
+    assert_context(
+      [:in_def],
       %q{def m() = get_context},
-      %q{def m(a = get_context) = 42}
-    ].each do |code|
-      assert_context([:def], code, SINCE_3_0)
-    end
-  end
+      SINCE_3_0)
 
-  def test_context_defs
-    [
-      %q{def foo.m; get_context; end},
-      %q{def foo.m(a = get_context); end}
-    ].each do |code|
-      assert_context([:defs], code, ALL_VERSIONS)
-    end
+    assert_context(
+      [:in_def],
+      %q{def self.m; get_context; end},
+      ALL_VERSIONS)
 
-    [
-      %q{def foo.m() = get_context},
-      %q{def foo.m(a = get_context) = 42}
-    ].each do |code|
-      assert_context([:defs], code, SINCE_3_0)
-    end
+    assert_context(
+      [:in_def],
+      %q{def self.m() = get_context},
+      SINCE_3_0)
   end
 
   def test_context_cmd_brace_block
@@ -6748,7 +6904,7 @@ class TestParser < Minitest::Test
       'foo.tap foo { get_context }',
       'foo::tap foo { get_context }'
     ].each do |code|
-      assert_context([:block], code, ALL_VERSIONS)
+      assert_context([:in_block], code, ALL_VERSIONS)
     end
   end
 
@@ -6761,7 +6917,7 @@ class TestParser < Minitest::Test
       'foo.tap do get_context end',
       'foo::tap do get_context end'
     ].each do |code|
-      assert_context([:block], code, ALL_VERSIONS)
+      assert_context([:in_block], code, ALL_VERSIONS)
     end
   end
 
@@ -6771,7 +6927,7 @@ class TestParser < Minitest::Test
       %q{foo.tap do get_context end},
       %q{foo::tap do get_context end}
     ].each do |code|
-      assert_context([:block], code, ALL_VERSIONS)
+      assert_context([:in_block], code, ALL_VERSIONS)
     end
   end
 
@@ -6784,90 +6940,8 @@ class TestParser < Minitest::Test
       '->(a = get_context) {}',
       '->(a = get_context) do end'
     ].each do |code|
-      assert_context([:lambda], code, SINCE_1_9)
+      assert_context([:in_lambda], code, SINCE_1_9)
     end
-  end
-
-  def test_context_nested
-    assert_context(
-      [:class, :module, :sclass, :defs, :def, :block],
-      %q{
-        class A
-          module M
-            class << foo
-              def bar.m
-                def m
-                  tap do
-                    get_context
-                  end
-                end
-              end
-            end
-          end
-        end
-      },
-      ALL_VERSIONS)
-
-    assert_context(
-      [:class, :module, :sclass, :defs, :def, :lambda, :block],
-      %q{
-        class A
-          module M
-            class << foo
-              def bar.m
-                def m
-                  -> do
-                    tap do
-                      get_context
-                    end
-                  end
-                end
-              end
-            end
-          end
-        end
-      },
-      SINCE_1_9)
-
-    assert_context(
-      [],
-      %q{
-        class A
-          module M
-            class << foo
-              def bar.m
-                def m
-                  tap do
-                  end
-                end
-              end
-            end
-          end
-        end
-        get_context
-      },
-      ALL_VERSIONS)
-
-    assert_context(
-      [],
-      %q{
-        class A
-          module M
-            class << foo
-              def bar.m
-                def m
-                  -> do
-                    tap do
-                    end
-                  end
-                end
-              end
-            end
-          end
-        end
-        get_context
-      },
-      SINCE_1_9)
   end
 
   def test_return_in_class
@@ -6886,13 +6960,19 @@ class TestParser < Minitest::Test
       SINCE_2_5)
 
     [
-      %q{class << foo; return; end},
       %q{def m; return; end},
       %q{tap { return }},
-      %q{class A; class << self; return; end; end},
+      %q{class A; class << self; def m; return; end; end; end},
       %q{class A; def m; return; end; end},
     ].each do |code|
       refute_diagnoses(code, ALL_VERSIONS)
+    end
+
+    [
+      %q{class << foo; return; end},
+      %q{class A; class << self; return; end; end},
+    ].each do |code|
+      refute_diagnoses(code, ALL_VERSIONS - SINCE_3_4)
     end
 
     [
@@ -6901,6 +6981,20 @@ class TestParser < Minitest::Test
     ].each do |code|
       refute_diagnoses(code, SINCE_1_9)
     end
+  end
+
+  def test_return_in_sclass_since_34
+    assert_diagnoses(
+      [:error, :invalid_return, {}],
+      %q{class << foo; return; end},
+      %q{              ^^^^^^ location},
+      SINCE_3_4)
+    
+    assert_diagnoses(
+      [:error, :invalid_return, {}],
+      %q{class A; class << self; return; end; end},
+      %q{                        ^^^^^^ location},
+      SINCE_3_4)
   end
 
   def test_method_definition_in_while_cond
@@ -7802,6 +7896,12 @@ class TestParser < Minitest::Test
       %q{:@@1},
       %q{ ^^^ location},
       SINCE_2_7)
+
+    assert_diagnoses(
+      [:error, :gvar_name, { :name => '$01234' }],
+      %q{:$01234},
+      %q{ ^^^^^^ location},
+      SINCE_3_3)
   end
 
   def test_csend_inside_lhs_of_masgn__since_27
@@ -8106,9 +8206,33 @@ class TestParser < Minitest::Test
       [:error, :unexpected_token, { :token => 'tDOT3' }],
       %q{def foo ...; end},
       %q{        ^^^ location},
-      SINCE_2_7)
+      SINCE_2_7 - SINCE_3_1)
   end
 
+  def test_forward_args_super_with_block
+    [
+      %q{def foo(...) super(...) {}; end},
+      %q{def foo(...) super(a, ...) {}; end},
+      %q{def foo(...) super(a, b, ...) {}; end},
+    ].each do |code|
+      # https://bugs.ruby-lang.org/issues/20392
+      refute_diagnoses(code, %w(3.3))
+      assert_diagnoses(
+        [:error, :block_and_blockarg],
+        code,
+        %q{},
+        SINCE_2_7 - %w(3.3))
+    end
+
+    [
+      %q{def foo(...) super {}; end},
+      %q{def foo(...) super() {}; end},
+      %q{def foo(...) super(a) {}; end},
+      %q{def foo(...) super(a, b) {}; end},
+    ].each do |code|
+      refute_diagnoses(code, SINCE_2_7)
+    end
+  end
   def test_trailing_forward_arg
     assert_parses(
       s(:def, :foo,
@@ -9090,6 +9214,28 @@ class TestParser < Minitest::Test
     )
   end
 
+  def test_ruby_bug_19539
+    assert_parses(
+      s(:str, "[Bug #19539]\n"),
+      "<<' FOO'\n""[Bug #19539]\n"" FOO\n",
+      %q{},
+      SINCE_3_3)
+
+    assert_parses(
+      s(:str, "[Bug #19539]\n"),
+      "<<-' FOO'\n""[Bug #19539]\n"" FOO\n",
+      %q{},
+      SINCE_3_3)
+
+    # closing identifier doesn't have enough leading spaces
+    # so it's considered as a part of the string (and so we reach EOF)
+    assert_diagnoses(
+      [:fatal, :string_eof],
+      "<<~'    E'\n  E",
+      %q{},
+      SINCE_3_3)
+  end
+
   def test_pattern_matching_hash_with_string_keys
     # Match + assign
 
@@ -9189,7 +9335,7 @@ class TestParser < Minitest::Test
     # diagnostic error because of the wrong lvar name
     assert_diagnoses(
       [:error, :lvar_name, { name: "a\n" }],
-      %Q{case nil; in "\#{ <<-HERE }":;\na\nHERE\nelse\nend},
+      "case nil; in \"\#{ <<-HERE }\":;\na\nHERE\nelse\nend",
       %q{                 ~~~~~~~ location},
       SINCE_2_7
     )
@@ -9491,6 +9637,56 @@ class TestParser < Minitest::Test
     )
   end
 
+  def test_pattern_matching_numbered_parameter
+    assert_parses(
+      s(:numblock,
+        s(:send,
+          s(:int, 1), :then), 1,
+        s(:match_pattern,
+          s(:int, 1),
+          s(:pin,
+            s(:lvar, :_1)))),
+      %q{1.then { 1 in ^_1 }},
+      %q{},
+      %w(2.7)
+    )
+
+    assert_parses(
+      s(:numblock,
+        s(:send,
+          s(:int, 1), :then), 1,
+        s(:match_pattern_p,
+          s(:int, 1),
+          s(:pin,
+            s(:lvar, :_1)))),
+      %q{1.then { 1 in ^_1 }},
+      %q{},
+      SINCE_3_0
+    )
+
+    assert_parses(
+      s(:case_match,
+        s(:int, 0),
+        s(:in_pattern,
+          s(:match_var, :_1), nil, nil), nil),
+      %q{case 0; in _1; end},
+      %q{},
+      %w(2.7)
+    )
+
+    assert_diagnoses(
+      [:error, :reserved_for_numparam, { :name => '_1' }],
+      %q{case 0; in _1; end},
+      %q{           ^^ location},
+      SINCE_3_0)
+
+    assert_diagnoses(
+      [:error, :undefined_lvar, { :name => '_1' }],
+      %q{case 0; in ^_1; end},
+      %q{            ^^ location},
+      SINCE_2_7)
+  end
+
   def assert_pattern_matching_defines_local_variables(match_code, lvar_names, versions = SINCE_2_7)
     code = "case 1; #{match_code}; then [#{lvar_names.join(', ')}]; end"
 
@@ -9713,6 +9909,40 @@ class TestParser < Minitest::Test
       %q{~~~~~~~~~~~~ expression (match_pattern_p)
         |       ~~ operator (match_pattern_p)},
       SINCE_3_1)
+
+    assert_parses(
+      s(:begin,
+        s(:match_pattern_p,
+          s(:hash,
+            s(:pair,
+              s(:sym, :key),
+              s(:sym, :value))),
+          s(:hash_pattern,
+            s(:pair,
+              s(:sym, :key),
+              s(:match_var, :value)))),
+        s(:lvar, :value)),
+      %q{{key: :value} in key: value; value},
+      %q{~~~~~~~~~~~~~~~~~~~~~~~~~~~ expression (match_pattern_p)
+        |              ~~ operator (match_pattern_p)},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:begin,
+        s(:match_pattern,
+          s(:hash,
+            s(:pair,
+              s(:sym, :key),
+              s(:sym, :value))),
+          s(:hash_pattern,
+            s(:pair,
+              s(:sym, :key),
+              s(:match_var, :value)))),
+        s(:lvar, :value)),
+      %q{{key: :value} => key: value; value},
+      %q{~~~~~~~~~~~~~~~~~~~~~~~~~~~ expression (match_pattern)
+        |              ~~ operator (match_pattern)},
+      SINCE_3_1)
   end
 
   def test_ruby_bug_pattern_matching_restore_in_kwarg_flag
@@ -9759,6 +9989,18 @@ class TestParser < Minitest::Test
       %q{0 => [a, a]},
       %q{         ^ location},
       SINCE_3_0)
+
+    assert_diagnoses(
+      [:error, :duplicate_variable_name, { :name => 'a' }],
+      %q{0 in [a, *a]},
+      %q{          ^ location},
+      SINCE_3_3)
+
+    assert_diagnoses(
+      [:error, :duplicate_variable_name, { :name => 'a' }],
+      %q{0 in [*a, a, b, *b]},
+      %q{          ^ location},
+      SINCE_3_3)
   end
 
   def test_pattern_matching_duplicate_hash_keys
@@ -10120,6 +10362,30 @@ class TestParser < Minitest::Test
       SINCE_3_1)
 
     assert_parses(
+      s(:begin,
+        s(:lvasgn, :foo,
+          s(:int, 1)),
+        s(:hash,
+          s(:pair,
+            s(:sym, :foo),
+            s(:lvar, :foo)))),
+      %q{foo = 1; {foo:}},
+      %q{},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:begin,
+        s(:lvasgn, :_foo,
+          s(:int, 1)),
+        s(:hash,
+          s(:pair,
+            s(:sym, :_foo),
+            s(:lvar, :_foo)))),
+      %q{_foo = 1; {_foo:}},
+      %q{},
+      SINCE_3_1)
+
+    assert_parses(
       s(:hash,
         s(:pair, s(:sym, :BAR), s(:const, nil, :BAR))),
       %q{{BAR:}},
@@ -10418,6 +10684,27 @@ class TestParser < Minitest::Test
     end
   end
 
+  def test_numparam_ruby_bug_19025
+    assert_diagnoses_many(
+      [
+        [:warning, :ambiguous_prefix, { :prefix => '**' }],
+        [:error, :unexpected_token, { :token => 'tDSTAR' }]
+      ],
+      'p { [_1 **2] }',
+      %w[3.0 3.1])
+
+    assert_parses(
+      s(:numblock,
+        s(:send, nil, :p), 1,
+        s(:array,
+          s(:send,
+            s(:lvar, :_1), :**,
+            s(:int, 2)))),
+      'p { [_1 **2] }',
+      %q{},
+      SINCE_3_2)
+  end
+
   def test_endless_setter
     assert_diagnoses(
       [:error, :endless_setter],
@@ -10504,7 +10791,7 @@ class TestParser < Minitest::Test
       s(:dstr,
         s(:begin),
         s(:str, "\n")),
-      %q{<<~HERE!  #{}!HERE}.gsub('!', "\n"),
+      "<<~HERE\n  \#{}\nHERE",
       %q{},
       SINCE_2_3)
   end
@@ -10583,6 +10870,16 @@ class TestParser < Minitest::Test
       %q{   ~ selector (in_pattern.pin)
         |   ~~~~~~~~~~~~~~~~~~~~~ expression (in_pattern.pin)},
       SINCE_3_1)
+
+    assert_parses_pattern_match(
+      s(:in_pattern,
+        s(:pin,
+          s(:begin,
+          s(:int, 1))), nil, nil),
+      %Q{in ^(1\n)},
+      %q{   ~ selector (in_pattern.pin)
+        |   ~~~~~ expression (in_pattern.pin)},
+      SINCE_3_2)
   end
 
   def test_assignment_to_numparam_via_pattern_matching
@@ -10673,7 +10970,61 @@ class TestParser < Minitest::Test
       SINCE_3_1)
   end
 
-  def test_control_meta_escape_chars_in_regexp
+  def test_parser_bug_830
+    assert_parses(
+      s(:regexp,
+        s(:str, "\\("),
+        s(:regopt)),
+      %q{/\(/},
+      %q{},
+      ALL_VERSIONS)
+  end
+
+  def test_control_meta_escape_chars_in_regexp__before_31
+    assert_parses(
+      s(:regexp, s(:str, "\\c\\xFF"), s(:regopt)),
+      %q{/\c\xFF/}.dup.force_encoding('ascii-8bit'),
+      %q{},
+      ALL_VERSIONS - SINCE_3_1)
+
+    assert_parses(
+      s(:regexp, s(:str, "\\c\\M-\\xFF"), s(:regopt)),
+      %q{/\c\M-\xFF/}.dup.force_encoding('ascii-8bit'),
+      %q{},
+      ALL_VERSIONS - SINCE_3_1)
+
+    assert_parses(
+      s(:regexp, s(:str, "\\C-\\xFF"), s(:regopt)),
+      %q{/\C-\xFF/}.dup.force_encoding('ascii-8bit'),
+      %q{},
+      ALL_VERSIONS - SINCE_3_1)
+
+    assert_parses(
+      s(:regexp, s(:str, "\\C-\\M-\\xFF"), s(:regopt)),
+      %q{/\C-\M-\xFF/}.dup.force_encoding('ascii-8bit'),
+      %q{},
+      ALL_VERSIONS - SINCE_3_1)
+
+    assert_parses(
+      s(:regexp, s(:str, "\\M-\\xFF"), s(:regopt)),
+      %q{/\M-\xFF/}.dup.force_encoding('ascii-8bit'),
+      %q{},
+      ALL_VERSIONS - SINCE_3_1)
+
+    assert_parses(
+      s(:regexp, s(:str, "\\M-\\C-\\xFF"), s(:regopt)),
+      %q{/\M-\C-\xFF/}.dup.force_encoding('ascii-8bit'),
+      %q{},
+      ALL_VERSIONS - SINCE_3_1)
+
+    assert_parses(
+      s(:regexp, s(:str, "\\M-\\c\\xFF"), s(:regopt)),
+      %q{/\M-\c\xFF/}.dup.force_encoding('ascii-8bit'),
+      %q{},
+      ALL_VERSIONS - SINCE_3_1)
+  end
+
+  def test_control_meta_escape_chars_in_regexp__since_31
     x9f = "\x9F".dup.force_encoding('ascii-8bit')
 
     assert_parses(
@@ -10717,5 +11068,653 @@ class TestParser < Minitest::Test
       %q{/\M-\c\xFF/}.dup.force_encoding('ascii-8bit'),
       %q{},
       SINCE_3_1)
+  end
+
+  def test_forward_arg_with_open_args
+    assert_diagnoses_many(
+      [
+        [:warning, :triple_dot_at_eol],
+        [:error, :unexpected_token, { :token => 'tDOT3' }],
+      ],
+      %Q{def foo ...\nend},
+      SINCE_2_7 - SINCE_3_1)
+
+    assert_diagnoses_many(
+      [
+        [:error, :unexpected_token, { :token => 'tBDOT3' }],
+      ],
+      %Q{def foo a, b = 1, ...\nend},
+      SINCE_2_7 - SINCE_3_1)
+
+    assert_parses(
+      s(:def, :foo,
+        s(:args, s(:forward_arg)), nil),
+      %Q{def foo ...\nend},
+      %q{        ~~~ expression (args.forward_arg)},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:arg, :a),
+          s(:optarg, :b,
+            s(:int, 1)),
+          s(:forward_arg)), nil),
+      %Q{def foo a, b = 1, ...\nend},
+      %q{                  ~~~ expression (args.forward_arg)},
+      SINCE_3_1)
+
+    assert_diagnoses(
+      [:error, :forward_arg_after_restarg],
+      %Q{def foo *rest, ...\nend},
+      %q{               ~~~ location
+        |        ~~~~~ highlights (0)},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:arg, :a),
+          s(:forward_arg)),
+        s(:send, nil, :bar,
+          s(:forwarded_args))),
+      "def foo(a, ...) bar(...) end",
+      %q{},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:arg, :a),
+          s(:forward_arg)),
+        s(:send, nil, :bar,
+          s(:forwarded_args))),
+      "def foo a, ...\n  bar(...)\nend",
+      %q{},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:optarg, :b,
+            s(:int, 1)),
+          s(:forward_arg)),
+        s(:send, nil, :bar,
+          s(:forwarded_args))),
+      "def foo b = 1, ...\n  bar(...)\nend",
+      %q{},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:forward_arg)),
+        s(:send, nil, :bar,
+          s(:forwarded_args))),
+      "def foo ...; bar(...); end",
+      %q{},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:arg, :a),
+          s(:forward_arg)),
+        s(:send, nil, :bar,
+          s(:forwarded_args))),
+      "def foo a, ...; bar(...); end",
+      %q{},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:optarg, :b,
+            s(:int, 1)),
+          s(:forward_arg)),
+        s(:send, nil, :bar,
+          s(:forwarded_args))),
+      "def foo b = 1, ...; bar(...); end",
+      %q{},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:begin,
+        s(:def, :foo,
+          s(:args,
+            s(:forward_arg)),
+          s(:send, nil, :bar,
+            s(:forwarded_args)))),
+      "(def foo ...\n  bar(...)\nend)",
+      %q{},
+      SINCE_3_1)
+
+    assert_parses(
+      s(:begin,
+        s(:def, :foo,
+          s(:args,
+            s(:forward_arg)),
+          s(:send, nil, :bar,
+            s(:forwarded_args)))),
+      "(def foo ...; bar(...); end)",
+      %q{},
+      SINCE_3_1)
+  end
+
+  def test_anonymous_blockarg
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:blockarg, nil)),
+        s(:send, nil, :bar,
+          s(:block_pass, nil))),
+      %q{def foo(&); bar(&); end},
+      %q{        ~ expression (args.blockarg)
+        |                ~ operator (send.block_pass)
+        |                ~ expression (send.block_pass)},
+      SINCE_3_1)
+
+    assert_diagnoses(
+      [:error, :no_anonymous_blockarg],
+      %q{def foo(); bar(&); end},
+      %q{               ^ location},
+      SINCE_3_1)
+
+    assert_diagnoses(
+      [:error, :unexpected_token, { :token => 'tINTEGER' }],
+      %q{def foo(&0); end},
+      %q{         ^ location},
+      SINCE_3_1)
+  end
+
+  def test_invalid_escape_sequence_in_regexp__before_32
+    assert_diagnoses(
+      [:fatal, :invalid_unicode_escape],
+      %q{/foo-\\u-bar/},
+      %q{},
+      ALL_VERSIONS - SINCE_3_2)
+  end
+
+  if RUBY_ENGINE != 'truffleruby'
+    def test_invalid_escape_sequence_in_regexp__since_32
+      assert_diagnoses(
+        [:error, :invalid_regexp, { :message => "invalid Unicode escape: /foo-\\u-bar/" }],
+        %q{/foo-\\u-bar/},
+        %q{},
+        SINCE_3_2)
+    end
+  end
+
+  def test_forwarded_restarg
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:restarg)),
+        s(:send, nil, :bar,
+          s(:forwarded_restarg))),
+      %q{def foo(*); bar(*); end},
+      %q{                ~ expression (send.forwarded_restarg)},
+      SINCE_3_2)
+
+    assert_diagnoses(
+      [:error, :no_anonymous_restarg],
+      %q{def foo; bar(*); end},
+      %q{},
+      SINCE_3_2)
+  end
+
+  def test_forwarded_argument_with_restarg
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:arg, :argument),
+          s(:restarg)),
+        s(:send, nil, :bar,
+          s(:lvar, :argument),
+          s(:forwarded_restarg))),
+      %q{def foo(argument, *); bar(argument, *); end},
+      %q{                                    ~ expression (send.forwarded_restarg)},
+      SINCE_3_2)
+
+    assert_diagnoses(
+      [:error, :no_anonymous_restarg],
+      %q{def foo; bar(argument, *); end},
+      %q{},
+      SINCE_3_2)
+  end
+
+  def test_forwarded_kwrestarg
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:kwrestarg)),
+        s(:send, nil, :bar,
+          s(:kwargs,
+            s(:forwarded_kwrestarg)))),
+      %q{def foo(**); bar(**); end},
+      %q{                 ~~ expression (send.kwargs.forwarded_kwrestarg)},
+      SINCE_3_2)
+
+    assert_diagnoses(
+      [:error, :no_anonymous_kwrestarg],
+      %q{def foo; bar(**); end},
+      %q{},
+      SINCE_3_2)
+  end
+
+  def test_forwarded_kwrestarg_with_additional_kwarg
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:kwrestarg)),
+        s(:send, nil, :bar,
+          s(:kwargs,
+            s(:forwarded_kwrestarg),
+            s(:pair,
+              s(:sym, :from_foo),
+              s(:true))))),
+      %q{def foo(**); bar(**, from_foo: true); end},
+      %q{                 ~~ expression (send.kwargs.forwarded_kwrestarg)},
+      SINCE_3_2)
+
+    refute_diagnoses(
+      %q{def foo(**); bar(**, from_foo: true); end},
+      SINCE_3_2)
+
+    assert_diagnoses(
+      [:warning, :duplicate_hash_key],
+      %q{def foo(**); bar(foo: 1, **, foo: 2); end},
+      %q{                             ^^^ location},
+      SINCE_3_2)
+  end
+
+  def test_forwarded_argument_with_kwrestarg
+    assert_parses(
+      s(:def, :foo,
+        s(:args,
+          s(:arg, :argument),
+          s(:kwrestarg)),
+        s(:send, nil, :bar,
+          s(:lvar, :argument),
+          s(:kwargs,
+            s(:forwarded_kwrestarg)))),
+      %q{def foo(argument, **); bar(argument, **); end},
+      %q{                                     ~~ expression (send.kwargs.forwarded_kwrestarg)},
+      SINCE_3_2)
+
+    assert_diagnoses(
+      [:error, :no_anonymous_kwrestarg],
+      %q{def foo; bar(argument, **); end},
+      %q{},
+      SINCE_3_2)
+  end
+
+  def test_if_while_after_class__since_32
+    assert_parses(
+      s(:module,
+        s(:const,
+          s(:if,
+            s(:true),
+            s(:const, nil, :Object), nil), :Kernel), nil),
+      %q{module if true; Object end::Kernel; end},
+      %q{},
+      SINCE_3_2)
+
+    assert_parses(
+      s(:module,
+        s(:const,
+          s(:while,
+            s(:true),
+            s(:break,
+              s(:const, nil, :Object))), :Kernel), nil),
+      %q{module while true; break Object end::Kernel; end},
+      %q{},
+      SINCE_3_2)
+
+    assert_parses(
+      s(:class,
+        s(:const,
+          s(:if,
+            s(:true),
+            s(:const, nil, :Object), nil), :Kernel), nil, nil),
+      %q{class if true; Object end::Kernel; end},
+      %q{},
+      SINCE_3_2)
+
+    assert_parses(
+      s(:class,
+        s(:const,
+          s(:while,
+            s(:true),
+            s(:break,
+              s(:const, nil, :Object))), :Kernel), nil, nil),
+      %q{class while true; break Object end::Kernel; end},
+      %q{},
+      SINCE_3_2)
+  end
+
+  def test_bare_backslash
+    assert_diagnoses(
+      [:error, :bare_backslash],
+      %q{x = \ 42},
+      %q{    ^ location},
+      ALL_VERSIONS)
+  end
+
+  def test_newline_in_hash_argument
+    assert_parses(
+      s(:send,
+        s(:send, nil, :obj), :set,
+        s(:kwargs,
+          s(:pair,
+            s(:sym, :foo),
+            s(:int, 1)))),
+      %Q{obj.set foo:\n1},
+      %q{},
+      SINCE_3_2)
+
+    assert_parses(
+      s(:send,
+        s(:send, nil, :obj), :set,
+        s(:kwargs,
+          s(:pair,
+            s(:sym, :foo),
+            s(:int, 1)))),
+      %Q{obj.set "foo":\n1},
+      %q{},
+      SINCE_3_2)
+
+    assert_parses(
+      s(:case_match,
+        s(:lvar, :foo),
+        s(:in_pattern,
+          s(:hash_pattern,
+            s(:match_var, :a)), nil,
+          s(:begin,
+            s(:int, 0),
+            s(:true))),
+        s(:in_pattern,
+          s(:hash_pattern,
+            s(:match_var, :b)), nil,
+          s(:begin,
+            s(:int, 0),
+            s(:true))), nil),
+      %Q{case foo\nin a:\n0\ntrue\nin "b":\n0\ntrue\nend},
+      %q{},
+      SINCE_3_2)
+  end
+
+  def test_multiple_pattern_matches
+    code = '{a: 0} => a:'
+    node = s(:match_pattern,
+            s(:hash,
+              s(:pair,
+                s(:sym, :a),
+                s(:int, 0))),
+            s(:hash_pattern,
+              s(:match_var, :a)))
+    assert_parses(
+      s(:begin,
+        node,
+        node),
+      %Q{#{code}\n#{code}},
+      %q{},
+      SINCE_3_1)
+
+    code = '{a: 0} in a:'
+    node = s(:match_pattern_p,
+            s(:hash,
+              s(:pair,
+                s(:sym, :a),
+                s(:int, 0))),
+            s(:hash_pattern,
+              s(:match_var, :a)))
+    assert_parses(
+      s(:begin,
+        node,
+        node),
+      %Q{#{code}\n#{code}},
+      %q{},
+      SINCE_3_1)
+  end
+
+  def test_kwoptarg_with_kwrestarg_and_forwarded_args
+    assert_parses(
+      s(:def, :f,
+        s(:args,
+          s(:kwoptarg, :a,
+            s(:nil)),
+          s(:kwrestarg)),
+        s(:send, nil, :b,
+          s(:kwargs,
+            s(:forwarded_kwrestarg)))),
+      %Q{def f(a: nil, **); b(**) end},
+      %q{},
+      SINCE_3_2)
+  end
+
+  def test_argument_forwarding_with_anon_rest_kwrest_and_block
+    assert_diagnoses(
+      [:error, :unexpected_token, { token: 'tBDOT3' }],
+      %q{def f(*, **, &); g(...); end},
+      %q{},
+      SINCE_3_2)
+
+    assert_diagnoses(
+      [:error, :no_anonymous_restarg],
+      %q{def f(...); g(*); end},
+      %q{},
+      SINCE_3_2)
+
+    assert_diagnoses(
+      [:error, :no_anonymous_restarg],
+      %q{def f(...); g(0, *); end},
+      %q{},
+      SINCE_3_2)
+
+    assert_diagnoses(
+      [:error, :no_anonymous_kwrestarg],
+      %q{def f(...); g(**); end},
+      %q{},
+      SINCE_3_2)
+
+    assert_diagnoses(
+      [:error, :no_anonymous_kwrestarg],
+      %q{def f(...); g(x: 1, **); end},
+      %q{},
+      SINCE_3_2)
+  end
+
+  def test_ruby_bug_18878
+    assert_parses(
+      s(:block,
+        s(:send,
+          s(:const, nil, :Foo), :Bar),
+        s(:args,
+          s(:procarg0,
+            s(:arg, :a))),
+        s(:int, 42)),
+      'Foo::Bar { |a| 42 }',
+      %q{},
+      SINCE_3_3)
+  end
+
+  def test_ruby_bug_19281
+    assert_parses(
+      s(:send, nil, :p,
+        s(:begin,
+          s(:int, 1),
+          s(:int, 2)),
+        s(:begin,
+          s(:int, 3)),
+        s(:begin,
+          s(:int, 4))),
+      'p (1;2),(3),(4)',
+      %q{},
+      SINCE_3_3)
+
+    assert_parses(
+      s(:send, nil, :p,
+        s(:begin),
+        s(:begin),
+        s(:begin)),
+      'p (;),(),()',
+      %q{},
+      SINCE_3_3)
+
+    assert_parses(
+      s(:send,
+        s(:send, nil, :a), :b,
+        s(:begin,
+          s(:int, 1),
+          s(:int, 2)),
+        s(:begin,
+          s(:int, 3)),
+        s(:begin,
+          s(:int, 4))),
+      'a.b (1;2),(3),(4)',
+      %q{},
+      SINCE_3_3)
+
+    assert_parses(
+      s(:send,
+        s(:send, nil, :a), :b,
+        s(:begin),
+        s(:begin),
+        s(:begin)),
+      'a.b (;),(),()',
+      %q{},
+      SINCE_3_3)
+  end
+
+  def test_ungettable_gvar
+    assert_diagnoses(
+      [:error, :gvar_name, { :name => '$01234' }],
+      '$01234',
+      '^^^^^^ location',
+      ALL_VERSIONS)
+
+    assert_diagnoses(
+      [:error, :gvar_name, { :name => '$01234' }],
+      '"#$01234"',
+      '  ^^^^^^ location',
+      ALL_VERSIONS)
+  end
+
+  def test_it_warning_in_33
+    refute_diagnoses(
+      'if false; it; end',
+      ALL_VERSIONS)
+    refute_diagnoses(
+      'def foo; it; end',
+      ALL_VERSIONS)
+    assert_diagnoses(
+      [:warning, :ambiguous_it_call, {}],
+      '0.times { it }',
+      '          ^^ location',
+      ['3.3'])
+    refute_diagnoses(
+      '0.times { || it }',
+      ALL_VERSIONS)
+    refute_diagnoses(
+      '0.times { |_n| it }',
+      ALL_VERSIONS)
+    assert_diagnoses(
+      [:warning, :ambiguous_it_call, {}],
+      '0.times { it; it = 1; it }',
+      '          ^^ location',
+      ['3.3'])
+    refute_diagnoses(
+      '0.times { it = 1; it }',
+      ALL_VERSIONS)
+    refute_diagnoses(
+      'it = 1; 0.times { it }',
+      ALL_VERSIONS)
+  end
+
+  def test_anonymous_params_in_nested_scopes
+    assert_diagnoses(
+      [:error, :ambiguous_anonymous_blockarg, {}],
+      'def b(&) ->(&) {c(&)} end',
+      '                  ^ location',
+      SINCE_3_3)
+    assert_diagnoses(
+      [:error, :ambiguous_anonymous_restarg, {}],
+      'def b(*) ->(*) {c(*)} end',
+      '                  ^ location',
+      SINCE_3_3)
+    assert_diagnoses(
+      [:error, :ambiguous_anonymous_restarg, {}],
+      'def b(a, *) ->(*) {c(1, *)} end',
+      '                        ^ location',
+      SINCE_3_3)
+    assert_diagnoses(
+      [:error, :ambiguous_anonymous_restarg, {}],
+      'def b(*) ->(a, *) {c(*)} end',
+      '                     ^ location',
+      SINCE_3_3)
+    assert_diagnoses(
+      [:error, :ambiguous_anonymous_kwrestarg, {}],
+      'def b(**) ->(**) {c(**)} end',
+      '                    ^^ location',
+      SINCE_3_3)
+    assert_diagnoses(
+      [:error, :ambiguous_anonymous_kwrestarg, {}],
+      'def b(k:, **) ->(**) {c(k: 1, **)} end',
+      '                              ^^ location',
+      SINCE_3_3)
+    assert_diagnoses(
+      [:error, :ambiguous_anonymous_kwrestarg, {}],
+      'def b(**) ->(k:, **) {c(**)} end',
+      '                        ^^ location',
+      SINCE_3_3)
+
+    refute_diagnoses(
+      'def b(&) ->(&) {c()} end',
+      SINCE_3_3)
+    refute_diagnoses(
+      'def b(*) ->(*) {c()} end',
+      SINCE_3_3)
+    refute_diagnoses(
+      'def b(**) ->(**) {c()} end',
+      SINCE_3_3)
+  end
+
+  def test_parser_bug_989
+    assert_parses(
+      s(:str, "\t\tcontent\n"),
+      "\t<<-HERE\n\t\tcontent\n\tHERE",
+      %q{},
+      ALL_VERSIONS)
+  end
+
+  def test_parser_bug_19370
+    refute_diagnoses(
+      'def b(&) ->() {c(&)} end',
+      SINCE_3_3)
+
+    refute_diagnoses(
+      'def b(*) ->() {c(*)} end',
+      SINCE_3_3)
+
+    refute_diagnoses(
+      'def b(a, *) ->() {c(1, *)} end',
+      SINCE_3_3)
+
+    refute_diagnoses(
+      'def b(*) ->(a) {c(*)} end',
+      SINCE_3_3)
+
+    refute_diagnoses(
+      'def b(**) ->() {c(**)} end',
+      SINCE_3_3)
+
+    refute_diagnoses(
+      'def b(k:, **) ->() {c(k: 1, **)} end',
+      SINCE_3_3)
+
+    refute_diagnoses(
+      'def b(**) ->(k:) {c(**)} end',
+      SINCE_3_3)
   end
 end

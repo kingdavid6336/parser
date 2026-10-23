@@ -6,7 +6,9 @@ module Parser
     ##
     # @api public
     #
-    class Processor < ::AST::Processor
+    class Processor
+      include ::AST::Processor::Mixin
+
       def process_regular_node(node)
         node.updated(nil, process_all(node))
       end
@@ -147,6 +149,9 @@ module Parser
       alias on_restarg_expr   process_regular_node
       alias on_blockarg_expr  process_regular_node
       alias on_block_pass     process_regular_node
+
+      alias on_forwarded_restarg   process_regular_node
+      alias on_forwarded_kwrestarg process_regular_node
 
       alias on_module         process_regular_node
       alias on_class          process_regular_node

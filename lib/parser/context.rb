@@ -9,60 +9,43 @@ module Parser
   # + :sclass - in the singleton class body (class << obj; end)
   # + :def - in the method body (def m; end)
   # + :defs - in the singleton method body (def self.m; end)
+  # + :def_open_args - in the arglist of the method definition
+  #                    keep in mind that it's set **only** after reducing the first argument,
+  #                    if you need to handle the first argument check `lex_state == expr_fname`
   # + :block - in the block body (tap {})
   # + :lambda - in the lambda body (-> {})
   #
   class Context
-    attr_reader :stack
+    FLAGS = %i[
+      in_defined
+      in_kwarg
+      in_argdef
+      in_def
+      in_class
+      in_block
+      in_lambda
+      cant_return
+    ]
 
     def initialize
-      @stack = []
-      freeze
-    end
-
-    def push(state)
-      @stack << state
-    end
-
-    def pop
-      @stack.pop
+      reset
     end
 
     def reset
-      @stack.clear
+      @in_defined = false
+      @in_kwarg = false
+      @in_argdef = false
+      @in_def = false
+      @in_class = false
+      @in_block = false
+      @in_lambda = false
+      @cant_return = false
     end
 
-    def empty?
-      @stack.empty?
-    end
-
-    def in_class?
-      @stack.last == :class
-    end
-
-    def indirectly_in_def?
-      @stack.include?(:def) || @stack.include?(:defs)
-    end
-
-    def class_definition_allowed?
-      def_index = stack.rindex { |item| [:def, :defs].include?(item) }
-      sclass_index = stack.rindex(:sclass)
-
-      def_index.nil? || (!sclass_index.nil? && sclass_index > def_index)
-    end
-    alias module_definition_allowed? class_definition_allowed?
-    alias dynamic_const_definition_allowed? class_definition_allowed?
-
-    def in_block?
-      @stack.last == :block
-    end
-
-    def in_lambda?
-      @stack.last == :lambda
-    end
+    attr_accessor(*FLAGS)
 
     def in_dynamic_block?
-      in_block? || in_lambda?
+      in_block || in_lambda
     end
   end
 end

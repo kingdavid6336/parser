@@ -7,7 +7,7 @@ module ParseHelper
   require 'parser/macruby'
   require 'parser/rubymotion'
 
-  ALL_VERSIONS = %w(1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 3.0 3.1 mac ios)
+  ALL_VERSIONS = %w(1.8 1.9 2.0 2.1 2.2 2.3 2.4 2.5 2.6 2.7 3.0 3.1 3.2 3.3 3.4 mac ios)
 
   def setup
     @diagnostics = []
@@ -29,6 +29,9 @@ module ParseHelper
     when '2.7' then parser = Parser::Ruby27.new
     when '3.0' then parser = Parser::Ruby30.new
     when '3.1' then parser = Parser::Ruby31.new
+    when '3.2' then parser = Parser::Ruby32.new
+    when '3.3' then parser = Parser::Ruby33.new
+    when '3.4' then parser = Parser::Ruby34.new
     when 'mac' then parser = Parser::MacRuby.new
     when 'ios' then parser = Parser::RubyMotion.new
     else raise "Unrecognized Ruby version #{version}"
@@ -76,6 +79,8 @@ module ParseHelper
   # )
   # ~~~
   def assert_parses(ast, code, source_maps='', versions=ALL_VERSIONS)
+    refute_operator(versions, :empty?)
+
     with_versions(versions) do |version, parser|
       try_parsing(ast, code, parser, source_maps, version)
     end
@@ -157,6 +162,8 @@ module ParseHelper
   #     |     ~~~ highlights (0)})
   # ~~~
   def assert_diagnoses(diagnostic, code, source_maps='', versions=ALL_VERSIONS)
+    refute_operator(versions, :empty?)
+
     with_versions(versions) do |version, parser|
       source_file = Parser::Source::Buffer.new('(assert_diagnoses)', source: code)
 
@@ -214,6 +221,8 @@ module ParseHelper
   #   SINCE_2_4)
   # ~~~
   def assert_diagnoses_many(diagnostics, code, versions=ALL_VERSIONS)
+    refute_operator(versions, :empty?)
+
     with_versions(versions) do |version, parser|
       source_file = Parser::Source::Buffer.new('(assert_diagnoses_many)', source: code)
 
@@ -239,6 +248,8 @@ module ParseHelper
   end
 
   def refute_diagnoses(code, versions=ALL_VERSIONS)
+    refute_operator(versions, :empty?)
+
     with_versions(versions) do |version, parser|
       source_file = Parser::Source::Buffer.new('(refute_diagnoses)', source: code)
 
@@ -255,6 +266,8 @@ module ParseHelper
   end
 
   def assert_context(context, code, versions=ALL_VERSIONS)
+    refute_operator(versions, :empty?)
+
     with_versions(versions) do |version, parser|
       source_file = Parser::Source::Buffer.new('(assert_context)', source: code)
 
@@ -264,7 +277,8 @@ module ParseHelper
       assert_equal 1, nodes.count, "there must exactly 1 `get_context()` call"
 
       node = nodes.first
-      assert_equal context, node.context, "(#{version}) expect parsing context to match"
+      actual_context = Parser::Context::FLAGS.each_with_object([]) { |flag, acc| acc << flag if node.context.public_send(flag) }
+      assert_equal context.sort, actual_context.sort, "(#{version}) expect parsing context to match"
     end
   end
 
@@ -354,7 +368,9 @@ module ParseHelper
     assert lexer.lambda_stack.empty?, "(#{version}) expected lambda_stack to be empty after parsing"
 
     assert parser.static_env.empty?, "(#{version}) expected static_env to be empty after parsing"
-    assert parser.context.empty?, "(#{version}) expected context to be empty after parsing"
+    Parser::Context::FLAGS.each do |ctx_flag|
+      refute parser.context.public_send(ctx_flag), "(#{version}) expected context.#{ctx_flag} to be `false` after parsing"
+    end
     assert parser.max_numparam_stack.empty?, "(#{version}) expected max_numparam_stack to be empty after parsing"
     assert parser.current_arg_stack.empty?, "(#{version}) expected current_arg_stack to be empty after parsing"
     assert parser.pattern_variables.empty?, "(#{version}) expected pattern_variables to be empty after parsing"

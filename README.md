@@ -13,6 +13,12 @@ equivalent source code from Parser's ASTs.
 Sponsored by [Evil Martians](http://evilmartians.com).
 MacRuby and RubyMotion support sponsored by [CodeClimate](http://codeclimate.com).
 
+> [!WARNING]
+> The `parser` gem is only compatible with the syntax of Ruby 3.3 and lower. For Ruby 3.4 and later, please use the [`Prism::Translation::Parser`](https://github.com/ruby/prism/blob/main/docs/parser_translation.md) instead.
+> Starting in Ruby 3.4, Prism is the parser used in Ruby itself and can produce AST that is identical to the output of the `parser` gem. If you only need to parse Ruby 3.3 (or greater) and don't require compatibility with the `parser` gem AST, also consider using the native Prism AST.
+> See this [GitHub issue](https://github.com/whitequark/parser/issues/1046) for more details.
+> For a guide on how to use `parser` for older versions and `prism` for newer ones, please see [this guide](./doc/PRISM_TRANSLATION.md).
+
 ## Installation
 
     $ gem install parser
@@ -22,55 +28,63 @@ MacRuby and RubyMotion support sponsored by [CodeClimate](http://codeclimate.com
 Load Parser (see the [backwards compatibility](#backwards-compatibility) section
 below for explanation of `emit_*` calls):
 
-    require 'parser/current'
-    # opt-in to most recent AST format:
-    Parser::Builders::Default.emit_lambda              = true
-    Parser::Builders::Default.emit_procarg0            = true
-    Parser::Builders::Default.emit_encoding            = true
-    Parser::Builders::Default.emit_index               = true
-    Parser::Builders::Default.emit_arg_inside_procarg0 = true
-    Parser::Builders::Default.emit_forward_arg         = true
-    Parser::Builders::Default.emit_kwargs              = true
-    Parser::Builders::Default.emit_match_pattern       = true
+```ruby
+require 'parser/current'
+# opt-in to most recent AST format:
+Parser::Builders::Default.emit_lambda              = true
+Parser::Builders::Default.emit_procarg0            = true
+Parser::Builders::Default.emit_encoding            = true
+Parser::Builders::Default.emit_index               = true
+Parser::Builders::Default.emit_arg_inside_procarg0 = true
+Parser::Builders::Default.emit_forward_arg         = true
+Parser::Builders::Default.emit_kwargs              = true
+Parser::Builders::Default.emit_match_pattern       = true
+```
 
 Parse a chunk of code:
 
-    p Parser::CurrentRuby.parse("2 + 2")
-    # (send
-    #   (int 2) :+
-    #   (int 2))
+```ruby
+p Parser::CurrentRuby.parse("2 + 2")
+# (send
+#   (int 2) :+
+#   (int 2))
+```
 
 Access the AST's source map:
 
-    p Parser::CurrentRuby.parse("2 + 2").loc
-    # #<Parser::Source::Map::Send:0x007fe5a1ac2388
-    #   @dot=nil,
-    #   @begin=nil,
-    #   @end=nil,
-    #   @selector=#<Source::Range (string) 2...3>,
-    #   @expression=#<Source::Range (string) 0...5>>
+```ruby
+p Parser::CurrentRuby.parse("2 + 2").loc
+# #<Parser::Source::Map::Send:0x007fe5a1ac2388
+#   @dot=nil,
+#   @begin=nil,
+#   @end=nil,
+#   @selector=#<Source::Range (string) 2...3>,
+#   @expression=#<Source::Range (string) 0...5>>
 
-    p Parser::CurrentRuby.parse("2 + 2").loc.selector.source
-    # "+"
+p Parser::CurrentRuby.parse("2 + 2").loc.selector.source
+# "+"
+```
 
 Traverse the AST: see the documentation for [gem ast](https://whitequark.github.io/ast/).
 
 Parse a chunk of code and display all diagnostics:
 
-    parser = Parser::CurrentRuby.new
-    parser.diagnostics.consumer = lambda do |diag|
-      puts diag.render
-    end
+```ruby
+parser = Parser::CurrentRuby.new
+parser.diagnostics.consumer = lambda do |diag|
+  puts diag.render
+end
 
-    buffer = Parser::Source::Buffer.new('(string)', source: "foo *bar")
+buffer = Parser::Source::Buffer.new('(string)', source: "foo *bar")
 
-    p parser.parse(buffer)
-    # (string):1:5: warning: `*' interpreted as argument prefix
-    # foo *bar
-    #     ^
-    # (send nil :foo
-    #   (splat
-    #     (send nil :bar)))
+p parser.parse(buffer)
+# (string):1:5: warning: `*' interpreted as argument prefix
+# foo *bar
+#     ^
+# (send nil :foo
+#   (splat
+#     (send nil :bar)))
+```
 
 If you reuse the same parser object for multiple `#parse` runs, you need to
 `#reset` it.
@@ -109,7 +123,7 @@ with Parser:
 * Precise source location reporting.
 * [Documented](doc/AST_FORMAT.md) AST format which is convenient to work with.
 * A simple interface and a powerful, tweakable one.
-* Parses 1.8, 1.9, 2.0, 2.1, 2.2 and 2.3 syntax with backwards-compatible
+* Parses 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 3.0, 3.1, 3.2, and 3.3 syntax with backwards-compatible
   AST formats.
 * Parses MacRuby and RubyMotion syntax extensions.
 * [Rewriting][rewriting] support.
@@ -123,8 +137,8 @@ with Parser:
 
 [clang-like]: http://clang.llvm.org/diagnostics.html
 [ast]: https://rubygems.org/gems/ast
-[insane-lexer]: http://whitequark.org/blog/2013/04/01/ruby-hacking-guide-ch-11-finite-state-lexer/
-[rewriting]: http://whitequark.org/blog/2013/04/26/lets-play-with-ruby-code/
+[insane-lexer]: http://web.archive.org/web/20210621201915/http://whitequark.org/blog/2013/04/01/ruby-hacking-guide-ch-11-finite-state-lexer/
+[rewriting]: http://web.archive.org/web/20220123050223/http://whitequark.org/blog/2013/04/26/lets-play-with-ruby-code/
 
 ## Documentation
 
@@ -138,7 +152,7 @@ Several Parser nodes seem to be confusing enough to warrant a dedicated README s
 
 The `(block)` node passes a Ruby block, that is, a closure, to a method call represented by its first child, a `(send)`, `(super)` or `(zsuper)` node. To demonstrate:
 
-```
+```bash
 $ ruby-parse -e 'foo { |x| x + 2 }'
 (block
   (send nil :foo)
@@ -162,7 +176,7 @@ Both `(begin)` and `(kwbegin)` nodes represent compound statements, that is, sev
 
 and so on.
 
-```
+```bash
 $ ruby-parse -e '(foo; bar)'
 (begin
   (send nil :foo)
@@ -252,6 +266,15 @@ issue](https://github.com/whitequark/parser/issues/72).
 
 It is unknown whether any gems are affected by this issue.
 
+### Syntax check of block exits
+
+Similar to "void value expression" checks Ruby MRI also checks for correct
+usage of `break`, `next` and `redo`, if it's used outside of a {break,next,redo}-able
+context Ruby returns a syntax error starting from 3.3.0. `parser` gem simply doesn't
+run this type of checks.
+
+It is unknown whether any gems are affected by this issue.
+
 ### Invalid characters inside comments and literals
 
 Ruby MRI permits arbitrary non-7-bit byte sequences to appear in comments, as well as in string or symbol literals in form of escape sequences, regardless of source encoding. Parser requires all source code, including the expanded escape sequences, to consist of valid byte sequences in the source encoding that are convertible to UTF-8.
@@ -281,7 +304,7 @@ It is unknown whether any gems are affected by this issue.
 
 ## Contributors
 
-* [whitequark][]
+* Catherine [whitequark][]
 * Markus Schirp ([mbj][])
 * Yorick Peterse ([yorickpeterse][])
 * Magnus Holm ([judofyr][])
@@ -303,7 +326,7 @@ parse.y.
 
 ## Contributing
 
-1. Make sure you have [Ragel ~> 6.7](http://www.complang.org/ragel/) installed
+1. Make sure you have [Ragel ~> 6.7](http://www.colm.net/open-source/ragel/) installed
 2. Fork it
 3. Create your feature branch (`git checkout -b my-new-feature`)
 4. Commit your changes (`git commit -am 'Add some feature'`)

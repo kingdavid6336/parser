@@ -53,4 +53,18 @@ class TestRunnerParse < Minitest::Test
     assert_prints ['--emit-json', '-e', ''],
                   "\n"
   end
+
+  def test_stdin_input
+    assert_prints ['--emit-ruby', '-', { stdin_data: '123' }],
+                  's(:int, 123)'
+  end
+
+  def test_folder_with_rb_extension
+    Dir.mktmpdir do |tmp_dir|
+      Dir.mkdir("#{tmp_dir}/foo.rb")
+      File.write("#{tmp_dir}/foo.rb/bar.rb", "123")
+
+      assert_prints [tmp_dir], '(int 123)'
+    end
+  end
 end

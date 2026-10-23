@@ -21,7 +21,9 @@ end
 
 task :build => [:generate_release, :changelog]
 
-GENERATED_FILES = %w(lib/parser/lexer.rb
+GENERATED_FILES = %w(lib/parser/lexer-F0.rb
+                     lib/parser/lexer-F1.rb
+                     lib/parser/lexer-strings.rb
                      lib/parser/ruby18.rb
                      lib/parser/ruby19.rb
                      lib/parser/ruby20.rb
@@ -34,6 +36,9 @@ GENERATED_FILES = %w(lib/parser/lexer.rb
                      lib/parser/ruby27.rb
                      lib/parser/ruby30.rb
                      lib/parser/ruby31.rb
+                     lib/parser/ruby32.rb
+                     lib/parser/ruby33.rb
+                     lib/parser/ruby34.rb
                      lib/parser/macruby.rb
                      lib/parser/rubymotion.rb)
 
@@ -150,8 +155,16 @@ task :changelog do
   sh('git commit CHANGELOG.md -m "Update changelog." || true')
 end
 
-rule '.rb' => '.rl' do |t|
+file 'lib/parser/lexer-F1.rb' => 'lib/parser/lexer.rl' do |t|
   sh "ragel -F1 -R #{t.source} -o #{t.name}"
+end
+
+file 'lib/parser/lexer-F0.rb' => 'lib/parser/lexer.rl' do |t|
+  sh "ragel -F0 -R #{t.source} -o #{t.name}"
+end
+
+file 'lib/parser/lexer-strings.rb' => 'lib/parser/lexer-strings.rl' do |t|
+  sh "ragel -F0 -R #{t.source} -o #{t.name}"
 end
 
 rule '.rb' => '.y' do |t|

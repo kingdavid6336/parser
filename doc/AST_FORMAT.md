@@ -1014,6 +1014,17 @@ Format:
 
 Begin of the `expression` points to `&`.
 
+
+### Anonymous block argument
+
+Format:
+
+~~~
+(blockarg nil)
+"&"
+ ~ expression
+~~~
+
 ### Auto-expanding proc argument (1.9)
 
 In Ruby 1.9 and later, when a proc-like closure (i.e. a closure
@@ -1134,6 +1145,17 @@ Format:
  ~~~~~ expression
 ~~~
 
+### Block nil argument (Prism only)
+
+Format:
+
+~~~
+(blocknilarg)
+"&nil"
+  ~~~ name
+ ~~~~ expression
+~~~
+
 ### Objective-C arguments
 
 MacRuby includes a few more syntactic "arguments" whose name becomes
@@ -1198,7 +1220,7 @@ def f(*a: b); end
 ### Block with numbered parameters
 
 Ruby 2.7 introduced a feature called "numbered parameters".
-Numbered and ordinal parameters are mutually exclusive, so if the block
+Numbered, implicit it, and ordinal parameters are mutually exclusive, so if the block
 has only numbered parameters it also has a different AST node.
 
 Note that the second child represents a total number of numbered parameters.
@@ -1214,6 +1236,24 @@ s(:numblock,
 "proc { _1 + _3 }"
       ~ begin   ~ end
  ~~~~~~~~~~~~~~~~ expression
+~~~
+
+## Block with `it` block parameter (Prism only)
+
+Ruby 3.4 introduced a feature called the "`it` block parameter".
+`it`, numbered, and ordinal parameters are mutually exclusive, so if the block
+only has the implicit it parameter it also has a different AST node.
+
+The second child will always be the symbol `it`.
+
+Format:
+
+~~~
+s(:itblock,
+  s(:send, nil, :proc), :it,
+  s(:send, s(:lvar, :it)))
+"proc { it }"
+ ~~~~~~~~~~~ expression
 ~~~
 
 ## Forward arguments
@@ -1263,6 +1303,28 @@ Format:
   (forwarded-args))
 "foo(...)"
      ~~~ expression
+~~~
+
+### Method call taking positional arguments of the currently called method
+
+Format:
+
+~~~
+(send nil :foo
+  (forwarded-restarg))
+"foo(*)"
+     ~ expression
+~~~
+
+### Method call taking keyword arguments of the currently called method
+
+Format:
+
+~~~
+(send nil :foo
+  (forwarded-kwrestarg))
+"foo(**)"
+     ~~ expression
 ~~~
 
 ## Send
@@ -1389,6 +1451,15 @@ Used when passing expression as block `foo(&bar)`
 "foo(1, &foo)"
         ^ operator
         ~~~~ expression
+~~~
+
+### Passing expression as anonymous block `foo(&)`
+
+~~~
+(send nil :foo (int 1) (block-pass nil))
+"foo(1, &)"
+        ^ operator
+        ~ expression
 ~~~
 
 ### "Stabby lambda"
